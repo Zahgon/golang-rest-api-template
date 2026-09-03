@@ -133,7 +133,7 @@ info:
     email: support@swagger.io
     name: API Support
     url: http://www.swagger.io/support
-  description: 'Go/Gin REST API template: books CRUD, register/login/refresh/logout,
+  description: 'Go/Echo REST API template: books CRUD, register/login/refresh/logout,
     Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access
     logs, rate limiting, and Swagger.'
   license:

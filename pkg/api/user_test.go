@@ -13,7 +13,6 @@ import (
 	"golang-rest-api-template/pkg/models"
 	"golang-rest-api-template/pkg/repository"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -54,8 +53,7 @@ func TestLoginHandlerSuccess(t *testing.T) {
 	db := openUserTestDB(t)
 	h := newTestUserHandler(db)
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/login", h.LoginHandler)
 
 	hashedPassword, _ := auth.HashPassword("password")
@@ -88,8 +86,7 @@ func TestLoginHandlerInvalidJSON(t *testing.T) {
 	mockUsers := repository.NewMockUserPersistence(ctrl)
 	h := NewUserHandler(mockUsers, nil, auth.NoopDenylist{})
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/login", h.LoginHandler)
 
 	w := httptest.NewRecorder()
@@ -108,8 +105,7 @@ func TestLoginHandlerBindValidationLoginUser(t *testing.T) {
 	mockUsers := repository.NewMockUserPersistence(ctrl)
 	h := NewUserHandler(mockUsers, nil, auth.NoopDenylist{})
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/login", h.LoginHandler)
 
 	body, _ := json.Marshal(map[string]string{"username": "onlyuser"})
@@ -126,8 +122,7 @@ func TestLoginHandlerUserNotFound(t *testing.T) {
 	db := openUserTestDB(t)
 	h := newTestUserHandler(db)
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/login", h.LoginHandler)
 
 	loginUser := models.LoginUser{Username: "nonexistent", Password: "password"}
@@ -146,8 +141,7 @@ func TestLoginHandlerWrongPassword(t *testing.T) {
 	db := openUserTestDB(t)
 	h := newTestUserHandler(db)
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/login", h.LoginHandler)
 
 	hashedPassword, _ := auth.HashPassword("correctpassword")
@@ -174,11 +168,10 @@ func TestRefreshAndLogoutHandlers(t *testing.T) {
 	db := openUserTestDB(t)
 	h := newTestUserHandler(db)
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/login", h.LoginHandler)
 	r.POST("/refresh", h.RefreshHandler)
-	r.POST("/logout", middleware.JWTAuth(auth.NoopDenylist{}), h.LogoutHandler)
+	r.POST("/logout", h.LogoutHandler, middleware.JWTAuth(auth.NoopDenylist{}))
 
 	hashedPassword, _ := auth.HashPassword("password")
 	require.NoError(t, db.Create(&models.User{Username: "refreshuser", Password: hashedPassword}).Error)
@@ -230,8 +223,7 @@ func TestRegisterHandlerInvalidJSON(t *testing.T) {
 	mockUsers := repository.NewMockUserPersistence(ctrl)
 	h := NewUserHandler(mockUsers, nil, auth.NoopDenylist{})
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/register", h.RegisterHandler)
 
 	w := httptest.NewRecorder()
@@ -250,8 +242,7 @@ func TestRegisterHandlerDBError(t *testing.T) {
 	mockUsers := repository.NewMockUserPersistence(ctrl)
 	h := NewUserHandler(mockUsers, nil, auth.NoopDenylist{})
 
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/register", h.RegisterHandler)
 
 	loginUser := models.LoginUser{Username: "newuser", Password: "password"}
@@ -281,8 +272,7 @@ func TestRegisterHandlerDuplicateUsername(t *testing.T) {
 	}
 
 	h := NewUserHandler(repository.NewGormUserStore(db), nil, auth.NoopDenylist{})
-	gin.SetMode(gin.TestMode)
-	r := gin.Default()
+	r := newTestEcho()
 	r.POST("/register", h.RegisterHandler)
 
 	login := models.LoginUser{Username: "alice", Password: "hunter2!aa"}

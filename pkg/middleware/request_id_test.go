@@ -6,19 +6,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRequestIDGenerated(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestID())
-	r.GET("/test", func(c *gin.Context) {
+	r.GET("/test", func(c echo.Context) error {
 		id1 := GetRequestID(c)
 		id2 := GetRequestID(c)
-		ctxID := GetRequestIDFromContext(c.Request.Context())
-		c.JSON(http.StatusOK, gin.H{"id1": id1, "id2": id2, "ctx": ctxID})
+		ctxID := GetRequestIDFromContext(c.Request().Context())
+		return c.JSON(http.StatusOK, map[string]string{"id1": id1, "id2": id2, "ctx": ctxID})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -37,13 +36,12 @@ func TestRequestIDGenerated(t *testing.T) {
 }
 
 func TestRequestIDPreserved(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestID())
-	r.GET("/test", func(c *gin.Context) {
+	r.GET("/test", func(c echo.Context) error {
 		requestID := GetRequestID(c)
-		ctxID := GetRequestIDFromContext(c.Request.Context())
-		c.JSON(http.StatusOK, gin.H{"id": requestID, "ctx": ctxID})
+		ctxID := GetRequestIDFromContext(c.Request().Context())
+		return c.JSON(http.StatusOK, map[string]string{"id": requestID, "ctx": ctxID})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)

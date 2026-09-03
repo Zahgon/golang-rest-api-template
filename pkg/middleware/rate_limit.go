@@ -14,7 +14,7 @@ import (
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/httperr"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
 const (
@@ -114,11 +114,11 @@ func RateLimitConfigFromEnv() RateLimitConfig {
 	return cfg
 }
 
-// RateLimiterFromEnv returns Gin middleware for distributed per-client rate
+// RateLimiterFromEnv returns Echo middleware for distributed per-client rate
 // limiting using RateLimitConfigFromEnv. When the backend is redis, redisClient
 // must implement cache.Cache (including Eval). A nil client falls back to the
 // in-memory store with a warning.
-func RateLimiterFromEnv(redisClient cache.Cache) gin.HandlerFunc {
+func RateLimiterFromEnv(redisClient cache.Cache) echo.MiddlewareFunc {
 	cfg := RateLimitConfigFromEnv()
 	return ClientRateLimiter(rateLimitStoreFor(cfg, redisClient), cfg)
 }
@@ -140,9 +140,11 @@ func rateLimitStoreFor(cfg RateLimitConfig, redisClient cache.Cache) RateLimitSt
 // ClientRateLimiter returns middleware that limits each client (by ClientIP)
 // using store and cfg. Probes registered before this middleware are unaffected.
 // On store errors the middleware fails closed with HTTP 503.
-func ClientRateLimiter(store RateLimitStore, cfg RateLimitConfig) gin.HandlerFunc {
+func ClientRateLimiter(store RateLimitStore, cfg RateLimitConfig) echo.MiddlewareFunc {
 	if !cfg.Enabled || store == nil {
-		return func(c *gin.Context) { c.Next() }
+		return func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error { return next(c) }
+		}
 	}
 	if cfg.Requests <= 0 {
 		cfg.Requests = DefaultRateLimitRequests
@@ -151,35 +153,35 @@ func ClientRateLimiter(store RateLimitStore, cfg RateLimitConfig) gin.HandlerFun
 		cfg.Window = DefaultRateLimitWindow
 	}
 
-	return func(c *gin.Context) {
-		key := clientRateLimitKey(c)
-		allowed, remaining, err := store.Allow(c.Request.Context(), key, cfg.Requests, cfg.Window)
-		if err != nil {
-			httperr.Abort(c, http.StatusServiceUnavailable, "rate limit unavailable")
-			return
-		}
-
-		c.Header("X-RateLimit-Limit", strconv.Itoa(cfg.Requests))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
-
-		if !allowed {
-			retryAfter := int(cfg.Window.Seconds())
-			if retryAfter < 1 {
-				retryAfter = 1
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			key := clientRateLimitKey(c)
+			allowed, remaining, err := store.Allow(c.Request().Context(), key, cfg.Requests, cfg.Window)
+			if err != nil {
+				return httperr.Abort(c, http.StatusServiceUnavailable, "rate limit unavailable")
 			}
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-			httperr.Abort(c, http.StatusTooManyRequests, "rate limit exceeded")
-			return
+
+			c.Response().Header().Set("X-RateLimit-Limit", strconv.Itoa(cfg.Requests))
+			c.Response().Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
+
+			if !allowed {
+				retryAfter := int(cfg.Window.Seconds())
+				if retryAfter < 1 {
+					retryAfter = 1
+				}
+				c.Response().Header().Set("Retry-After", strconv.Itoa(retryAfter))
+				return httperr.Abort(c, http.StatusTooManyRequests, "rate limit exceeded")
+			}
+			return next(c)
 		}
-		c.Next()
 	}
 }
 
-func clientRateLimitKey(c *gin.Context) string {
+func clientRateLimitKey(c echo.Context) string {
 	if c == nil {
 		return "unknown"
 	}
-	ip := strings.TrimSpace(c.ClientIP())
+	ip := strings.TrimSpace(c.RealIP())
 	if ip == "" {
 		return "unknown"
 	}

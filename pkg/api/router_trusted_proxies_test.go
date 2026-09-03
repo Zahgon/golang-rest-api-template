@@ -5,19 +5,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestConfigureTrustedProxiesNilIgnoresForwardedFor(t *testing.T) {
-	t.Setenv("GIN_TRUSTED_PROXIES", "")
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	t.Setenv("TRUSTED_PROXIES", "")
+	r := echo.New()
 	if !assert.NoError(t, configureTrustedProxies(r)) {
 		return
 	}
-	r.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, c.ClientIP())
+	r.GET("/", func(c echo.Context) error {
+		return c.String(http.StatusOK, c.RealIP())
 	})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "192.0.2.10:5555"
@@ -29,22 +28,20 @@ func TestConfigureTrustedProxiesNilIgnoresForwardedFor(t *testing.T) {
 }
 
 func TestConfigureTrustedProxiesInvalidEnvReturnsError(t *testing.T) {
-	t.Setenv("GIN_TRUSTED_PROXIES", "not-a-valid-cidr!!!")
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	t.Setenv("TRUSTED_PROXIES", "not-a-valid-cidr!!!")
+	r := echo.New()
 	err := configureTrustedProxies(r)
 	assert.Error(t, err)
 }
 
 func TestConfigureTrustedProxiesAllowsForwardedFromTrustedPeer(t *testing.T) {
-	t.Setenv("GIN_TRUSTED_PROXIES", "192.0.2.10/32")
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	t.Setenv("TRUSTED_PROXIES", "192.0.2.10/32")
+	r := echo.New()
 	if !assert.NoError(t, configureTrustedProxies(r)) {
 		return
 	}
-	r.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, c.ClientIP())
+	r.GET("/", func(c echo.Context) error {
+		return c.String(http.StatusOK, c.RealIP())
 	})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "192.0.2.10:5555"

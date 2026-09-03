@@ -14,8 +14,8 @@ import (
 	"golang-rest-api-template/pkg/cache"
 	"golang-rest-api-template/pkg/httperr"
 
-	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/labstack/echo/v4"
 	"go.uber.org/mock/gomock"
 )
 
@@ -269,13 +269,12 @@ func TestRedisRateLimitStore_nilCache(t *testing.T) {
 }
 
 func TestClientRateLimiter_perClientAndHeaders(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	store := NewMemoryRateLimitStore()
 	cfg := RateLimitConfig{Enabled: true, Requests: 2, Window: time.Minute, Backend: rateLimitBackendMemory}
 
-	r := gin.New()
+	r := echo.New()
 	r.Use(ClientRateLimiter(store, cfg))
-	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/x", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	hit := func(remote string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -322,10 +321,9 @@ func TestClientRateLimiter_perClientAndHeaders(t *testing.T) {
 }
 
 func TestClientRateLimiter_disabled(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.Use(ClientRateLimiter(NewMemoryRateLimitStore(), RateLimitConfig{Enabled: false, Requests: 1, Window: time.Minute}))
-	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/x", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/x", nil)
@@ -345,10 +343,9 @@ func (errStore) Allow(context.Context, string, int, time.Duration) (bool, int, e
 }
 
 func TestClientRateLimiter_storeErrorFailClosed(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.Use(ClientRateLimiter(errStore{}, RateLimitConfig{Enabled: true, Requests: 10, Window: time.Minute}))
-	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/x", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	rec := httptest.NewRecorder()
@@ -370,10 +367,9 @@ func TestRateLimiterFromEnv_memoryBackend(t *testing.T) {
 	t.Setenv("RATE_LIMIT_WINDOW", "1m")
 	t.Setenv("RATE_LIMIT_BACKEND", "memory")
 
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.Use(RateLimiterFromEnv(nil))
-	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/x", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.RemoteAddr = "8.8.8.8:53"

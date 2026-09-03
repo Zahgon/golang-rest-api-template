@@ -21,7 +21,7 @@ import (
 
 // @title           golang-rest-api-template
 // @version         1.0
-// @description     Go/Gin REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.
+// @description     Go/Echo REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support
@@ -104,9 +104,9 @@ func main() {
 		}
 	}()
 
-	// Gin mode comes from GIN_MODE (debug | release | test); see gin.EnvGinMode.
-	// Gin's init already applied os.Getenv("GIN_MODE"); do not override here.
-	// Use GIN_MODE=release in production so Security/XSS middleware run (pkg/api/router.go).
+	// Application mode comes from APP_MODE (debug | release | test) and is read
+	// by pkg/api/router.go; Echo has no framework-level mode of its own.
+	// Use APP_MODE=release in production so Security/XSS middleware run.
 
 	r := api.NewRouter(logger, mongo, db, redisClient)
 

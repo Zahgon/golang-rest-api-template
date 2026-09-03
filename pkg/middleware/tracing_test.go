@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -32,16 +32,15 @@ func installTestTracer(t *testing.T) *tracetest.SpanRecorder {
 }
 
 func TestTracingAttachesRequestIDAttribute(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	sr := installTestTracer(t)
 
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestID())
 	r.Use(Tracing())
-	r.GET("/books/:id", func(c *gin.Context) {
-		sc := trace.SpanFromContext(c.Request.Context()).SpanContext()
+	r.GET("/books/:id", func(c echo.Context) error {
+		sc := trace.SpanFromContext(c.Request().Context()).SpanContext()
 		assert.True(t, sc.IsValid())
-		c.Status(http.StatusOK)
+		return c.NoContent(http.StatusOK)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/books/42", nil)
@@ -68,15 +67,12 @@ func TestTracingAttachesRequestIDAttribute(t *testing.T) {
 }
 
 func TestTracingUnmatchedRouteUsesLowCardinalityName(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	sr := installTestTracer(t)
 
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestID())
 	r.Use(Tracing())
-	r.NoRoute(func(c *gin.Context) {
-		c.Status(http.StatusNotFound)
-	})
+	// Echo has no matched route here; the default NotFoundHandler applies.
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/books/42", nil)
 	w := httptest.NewRecorder()
@@ -91,14 +87,13 @@ func TestTracingUnmatchedRouteUsesLowCardinalityName(t *testing.T) {
 }
 
 func TestTracingMarksServerErrors(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	sr := installTestTracer(t)
 
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestID())
 	r.Use(Tracing())
-	r.GET("/boom", func(c *gin.Context) {
-		c.Status(http.StatusInternalServerError)
+	r.GET("/boom", func(c echo.Context) error {
+		return c.NoContent(http.StatusInternalServerError)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
@@ -111,16 +106,15 @@ func TestTracingMarksServerErrors(t *testing.T) {
 }
 
 func TestTracingNoopProviderStillServes(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	prev := otel.GetTracerProvider()
 	otel.SetTracerProvider(noop.NewTracerProvider())
 	t.Cleanup(func() { otel.SetTracerProvider(prev) })
 
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestID())
 	r.Use(Tracing())
-	r.GET("/ok", func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
+	r.GET("/ok", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/ok", nil)

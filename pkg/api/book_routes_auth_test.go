@@ -11,26 +11,25 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
 // testBookWriteMiddlewareStack mirrors NewRouter book mutation middleware so
 // JWT requirements stay aligned with production routes.
-func testBookWriteMiddlewareStack(t *testing.T) *gin.Engine {
+func testBookWriteMiddlewareStack(t *testing.T) *echo.Echo {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	ok := func(c *gin.Context) {
-		switch c.Request.Method {
+	r := newTestEcho()
+	ok := func(c echo.Context) error {
+		switch c.Request().Method {
 		case http.MethodDelete:
-			c.Status(http.StatusNoContent)
+			return c.NoContent(http.StatusNoContent)
 		default:
-			c.Status(http.StatusOK)
+			return c.NoContent(http.StatusOK)
 		}
 	}
-	r.PUT("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), ok)
-	r.PATCH("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), ok)
-	r.DELETE("/api/v1/books/:id", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), ok)
+	r.PUT("/api/v1/books/:id", ok, middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}))
+	r.PATCH("/api/v1/books/:id", ok, middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}))
+	r.DELETE("/api/v1/books/:id", ok, middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}))
 	return r
 }
 

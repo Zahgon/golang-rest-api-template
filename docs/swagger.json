@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Go/Gin REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.",
+        "description": "Go/Echo REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.",
         "title": "golang-rest-api-template",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {

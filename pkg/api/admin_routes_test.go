@@ -9,15 +9,14 @@ import (
 	"golang-rest-api-template/pkg/auth"
 	"golang-rest-api-template/pkg/middleware"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
-func testAdminRouter(t *testing.T) *gin.Engine {
+func testAdminRouter(t *testing.T) *echo.Echo {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
 	h := &userHandler{}
-	r := gin.New()
+	r := newTestEcho()
 	admin := r.Group("/admin", middleware.APIKeyAuth(), middleware.JWTAuth(auth.NoopDenylist{}), middleware.RequireRole(auth.RoleAdmin))
 	admin.GET("/me", h.AdminMeHandler)
 	return r

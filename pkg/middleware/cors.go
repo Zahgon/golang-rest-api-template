@@ -3,12 +3,12 @@ package middleware
 import (
 	"time"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
-func Cors() gin.HandlerFunc {
-	return cors.New(cors.Config{
+func Cors() echo.MiddlewareFunc {
+	return middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{
 			"http://127.0.0.1",
 			"http://127.0.0.1:8001",
@@ -18,9 +18,9 @@ func Cors() gin.HandlerFunc {
 		AllowHeaders: []string{"*"},
 		//ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-		//AllowOriginFunc: func(origin string) bool {
-		//	return origin == "https://github.com"
+		//AllowOriginFunc: func(origin string) (bool, error) {
+		//	return origin == "https://github.com", nil
 		//},
-		MaxAge: 12 * time.Hour,
+		MaxAge: int((12 * time.Hour).Seconds()),
 	})
 }

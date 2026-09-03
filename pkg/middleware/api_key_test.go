@@ -9,17 +9,16 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
-func testRouterAPIKeyOnly(t *testing.T) *gin.Engine {
+func testRouterAPIKeyOnly(t *testing.T) *echo.Echo {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/k", APIKeyAuth(), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	r := echo.New()
+	r.GET("/k", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, APIKeyAuth())
 	return r
 }
 

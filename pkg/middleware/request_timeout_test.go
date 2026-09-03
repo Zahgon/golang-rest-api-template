@@ -8,17 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRequestContextTimeoutNoOp(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestContextTimeout(0))
-	r.GET("/ok", func(c *gin.Context) {
-		assert.NoError(t, c.Request.Context().Err())
-		c.Status(http.StatusNoContent)
+	r.GET("/ok", func(c echo.Context) error {
+		assert.NoError(t, c.Request().Context().Err())
+		return c.NoContent(http.StatusNoContent)
 	})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ok", nil))
@@ -41,20 +40,18 @@ func TestRequestContextTimeoutDurationFromEnv(t *testing.T) {
 }
 
 func TestRequestContextTimeoutFiresBeforeSlowWork(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.Use(RequestContextTimeout(40 * time.Millisecond))
-	r.GET("/slow", func(c *gin.Context) {
-		ctx := c.Request.Context()
+	r.GET("/slow", func(c echo.Context) error {
+		ctx := c.Request().Context()
 		select {
 		case <-time.After(500 * time.Millisecond):
-			c.Status(http.StatusOK)
+			return c.NoContent(http.StatusOK)
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				c.AbortWithStatus(http.StatusGatewayTimeout)
-				return
+				return c.NoContent(http.StatusGatewayTimeout)
 			}
-			c.AbortWithStatus(http.StatusInternalServerError)
+			return c.NoContent(http.StatusInternalServerError)
 		}
 	})
 	rec := httptest.NewRecorder()

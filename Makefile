@@ -8,7 +8,7 @@ build-docker:
 
 # Run API against local Docker DBs. Requires `.env` for secrets and DB settings (see .env.example).
 # Only overrides service hostnames to localhost for containers started outside Compose.
-# Optional: set GIN_MODE=release in `.env` for the same security middleware as Docker Compose.
+# Optional: set APP_MODE=release in `.env` for the same security middleware as Docker Compose.
 run-local:
 	docker start dockerPostgres
 	docker start dockerRedis
