@@ -9,43 +9,41 @@ import (
 
 	"golang-rest-api-template/pkg/cache"
 
-	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/labstack/echo/v4"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"gorm.io/gorm"
 )
 
 // registerProbeRoutes mounts Kubernetes-style liveness and readiness endpoints.
-// They are registered before request logging, rate limiting, and the /api/v1
-// group so orchestrators can probe without API keys or JWTs.
-func registerProbeRoutes(r *gin.Engine, db *gorm.DB, redisClient cache.Cache, mongoCol *mongo.Collection) {
-	r.GET("/livez", livez)
-	r.GET("/readyz", readyzHandler(db, redisClient, mongoCol))
+// They are registered on the Echo instance itself, outside the group that
+// carries request logging, rate limiting, and the /api/v1 routes, so
+// orchestrators can probe without API keys or JWTs.
+func registerProbeRoutes(e *echo.Echo, db *gorm.DB, redisClient cache.Cache, mongoCol *mongo.Collection) {
+	e.GET("/livez", livez)
+	e.GET("/readyz", readyzHandler(db, redisClient, mongoCol))
 }
 
-func livez(c *gin.Context) {
-	c.Status(http.StatusOK)
+func livez(c echo.Context) error {
+	return c.NoContent(http.StatusOK)
 }
 
-func readyzHandler(db *gorm.DB, redisClient cache.Cache, mongoCol *mongo.Collection) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+func readyzHandler(db *gorm.DB, redisClient cache.Cache, mongoCol *mongo.Collection) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
 		defer cancel()
 
 		if err := pingPostgres(ctx, db); err != nil {
-			c.String(http.StatusServiceUnavailable, "postgres: %v", err)
-			return
+			return c.String(http.StatusServiceUnavailable, fmt.Sprintf("postgres: %v", err))
 		}
 		if err := pingRedis(ctx, redisClient); err != nil {
-			c.String(http.StatusServiceUnavailable, "redis: %v", err)
-			return
+			return c.String(http.StatusServiceUnavailable, fmt.Sprintf("redis: %v", err))
 		}
 		if err := pingMongo(ctx, mongoCol); err != nil {
-			c.String(http.StatusServiceUnavailable, "mongo: %v", err)
-			return
+			return c.String(http.StatusServiceUnavailable, fmt.Sprintf("mongo: %v", err))
 		}
-		c.Status(http.StatusOK)
+		return c.NoContent(http.StatusOK)
 	}
 }
 

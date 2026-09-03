@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
@@ -40,16 +40,15 @@ func TestMetricsConfigFromEnv(t *testing.T) {
 }
 
 func TestMetricsEndpointAndInstrumentation(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	m := NewMetrics(MetricsConfig{Enabled: true, Path: DefaultMetricsPath})
-	r := gin.New()
+	r := echo.New()
 	m.Mount(r)
 	r.Use(m.Middleware())
-	r.GET("/api/v1/books", func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
+	r.GET("/api/v1/books", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
 	})
-	r.GET("/api/v1/books/:id", func(c *gin.Context) {
-		c.Status(http.StatusNotFound)
+	r.GET("/api/v1/books/:id", func(c echo.Context) error {
+		return c.NoContent(http.StatusNotFound)
 	})
 
 	// Instrumented request
@@ -77,12 +76,11 @@ func TestMetricsEndpointAndInstrumentation(t *testing.T) {
 }
 
 func TestMetricsDisabled(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	m := NewMetrics(MetricsConfig{Enabled: false})
-	r := gin.New()
+	r := echo.New()
 	m.Mount(r)
 	r.Use(m.Middleware())
-	r.GET("/ok", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	r.GET("/ok", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ok", nil))
@@ -94,13 +92,12 @@ func TestMetricsDisabled(t *testing.T) {
 }
 
 func TestMetricsSkipsSwagger(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	m := NewMetrics(MetricsConfig{Enabled: true})
-	r := gin.New()
+	r := echo.New()
 	m.Mount(r)
 	r.Use(m.Middleware())
-	r.GET("/swagger/*any", func(c *gin.Context) {
-		c.String(http.StatusOK, "docs")
+	r.GET("/swagger/*", func(c echo.Context) error {
+		return c.String(http.StatusOK, "docs")
 	})
 
 	rec := httptest.NewRecorder()
@@ -110,15 +107,14 @@ func TestMetricsSkipsSwagger(t *testing.T) {
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.NotContains(t, rec.Body.String(), `path="/swagger/*any"`)
+	assert.NotContains(t, rec.Body.String(), `path="/swagger/*"`)
 }
 
 func TestMetricsCounterValues(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	m := NewMetrics(MetricsConfig{Enabled: true})
-	r := gin.New()
+	r := echo.New()
 	r.Use(m.Middleware())
-	r.GET("/ping", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/ping", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	for i := 0; i < 3; i++ {
 		rec := httptest.NewRecorder()
@@ -133,11 +129,10 @@ func TestMetricsCounterValues(t *testing.T) {
 }
 
 func TestMetricsConcurrent(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	m := NewMetrics(MetricsConfig{Enabled: true})
-	r := gin.New()
+	r := echo.New()
 	r.Use(m.Middleware())
-	r.GET("/ping", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/ping", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	const n = 50
 	var wg sync.WaitGroup
@@ -184,4 +179,31 @@ func TestMetricsUsesDedicatedRegistry(t *testing.T) {
 
 	// Global default registerer should not own our collectors.
 	assert.NotEqual(t, prometheus.DefaultRegisterer, m1.registry)
+}
+
+// Echo registers catch-all route-not-found entries for groups carrying
+// middleware, so unmatched paths report wildcard patterns instead of "". They
+// must still be counted under the single unmatched label, and real wildcard
+// routes must keep their own label.
+func TestMetricsLabelsGroupCatchAllAsUnmatched(t *testing.T) {
+	m := NewMetrics(MetricsConfig{Enabled: true})
+	r := echo.New()
+	g := r.Group("")
+	g.Use(m.Middleware())
+	g.GET("/api/v1/books", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	g.GET("/files/*", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+
+	for _, path := range []string{"/api/v1/books", "/files/a.txt", "/nope", "/api/v1/nope"} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	}
+
+	metric := &dto.Metric{}
+	require.NoError(t, m.requests.WithLabelValues(http.MethodGet, unmatchedRouteLabel, "404").Write(metric))
+	assert.Equal(t, float64(2), metric.GetCounter().GetValue(), "both unmatched paths share the unmatched label")
+
+	// A genuinely registered wildcard route keeps its own label.
+	metric = &dto.Metric{}
+	require.NoError(t, m.requests.WithLabelValues(http.MethodGet, "/files/*", "200").Write(metric))
+	assert.Equal(t, float64(1), metric.GetCounter().GetValue())
 }

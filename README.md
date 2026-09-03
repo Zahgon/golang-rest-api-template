@@ -5,7 +5,7 @@
 
 ## Overview
 
-This repository provides a template for building a RESTful API using Go with features like JWT Authentication, rate limiting, Swagger documentation, and database operations using GORM. The application uses the Gin Gonic web framework and is containerized using Docker.
+This repository provides a template for building a RESTful API using Go with features like JWT Authentication, rate limiting, Swagger documentation, and database operations using GORM. The application uses the Echo web framework and is containerized using Docker.
 
 ## Features
 
@@ -186,8 +186,8 @@ Names below match `os.Getenv` usage in this repository:
 | `TOKEN_DENYLIST_ENABLED` | Optional Redis access-token denylist for logout (`true`/`false`; default on). When on: per-`jti` denylist plus per-user `revoke_before` on logout-all. When off or Redis is unavailable, reads fail open (tokens accepted); login/refresh/logout still work via Postgres. |
 | `BCRYPT_COST` | Optional bcrypt work factor for **new** password hashes (integer `10`–`31`; default **`12`**, was 14). Values below `10` clamp to `10` with a log line. See [#128](https://github.com/LAA-Software-Engineering/golang-rest-api-template/issues/128). |
 | `API_SECRET_KEY` | Secret compared to the `X-API-Key` header (`pkg/middleware/api_key.go`) |
-| `GIN_MODE` | Standard Gin variable: `debug` (default if unset), `release` (enables Security + XSS middleware in `pkg/api/router.go`), or `test` |
-| `GIN_TRUSTED_PROXIES` | Optional comma-separated CIDRs trusted for `X-Forwarded-For` / `ClientIP` (`pkg/api/router.go`). If unset, only the direct peer address is used. |
+| `APP_MODE` | Application mode: `debug` (default if unset), `release` (enables Security + XSS middleware in `pkg/api/router.go`), or `test` |
+| `TRUSTED_PROXIES` | Optional comma-separated CIDRs trusted for `X-Forwarded-For` / `RealIP` (`pkg/api/router.go`). If unset, only the direct peer address is used. |
 | `REQUEST_MAX_BODY_BYTES` | Optional cap on JSON/body bytes for `POST`/`PUT`/`PATCH` (default `1048576`, i.e. 1 MiB; `pkg/middleware/max_body.go`). |
 | `REQUEST_CONTEXT_TIMEOUT` | Optional per-request deadline for **`/api/v1/**` only** (Go duration, e.g. `60s`); default `60s`. Set to `0`, `off`, or `none` to disable (`pkg/middleware/request_timeout.go`). Probes and Swagger are outside this group. |
 | `RATE_LIMIT_ENABLED` | Per-client rate limiting on/off (`true`/`false`; default on). Set `0`/`off`/`none` to disable (`pkg/middleware/rate_limit.go`). |
@@ -209,7 +209,7 @@ To generate URL-safe random values for `JWT_SECRET_KEY` and `API_SECRET_KEY`, ru
 go run ./scripts/generate_key.go
 ```
 
-`docker-compose.yml` does **not** embed JWT or API secrets; they must come from `.env` or your shell environment so keys are not committed to the repository. The Compose file sets **`GIN_MODE=release`** for the API service so production-style security headers apply; override in `.env` if you need `debug` locally. Service images use **pinned tags** (Postgres, Redis, Mongo), **published ports bind to `127.0.0.1`** for local dev, and Postgres data uses a **named volume** (`postgres_data`, same pattern as `mongo_data`). Remove volumes with `docker compose down -v` when you want a fresh database.
+`docker-compose.yml` does **not** embed JWT or API secrets; they must come from `.env` or your shell environment so keys are not committed to the repository. The Compose file sets **`APP_MODE=release`** for the API service so production-style security headers apply; override in `.env` if you need `debug` locally. Service images use **pinned tags** (Postgres, Redis, Mongo), **published ports bind to `127.0.0.1`** for local dev, and Postgres data uses a **named volume** (`postgres_data`, same pattern as `mongo_data`). Remove volumes with `docker compose down -v` when you want a fresh database.
 
 ### API Documentation
 

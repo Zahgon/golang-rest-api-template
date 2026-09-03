@@ -9,16 +9,15 @@ import (
 
 	"golang-rest-api-template/pkg/auth"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
-func testRouterRequireRole(t *testing.T, allowed ...string) *gin.Engine {
+func testRouterRequireRole(t *testing.T, allowed ...string) *echo.Echo {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/admin", JWTAuth(auth.NoopDenylist{}), RequireRole(allowed...), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	r := echo.New()
+	r.GET("/admin", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(auth.NoopDenylist{}), RequireRole(allowed...))
 	return r
 }
 
@@ -61,11 +60,10 @@ func TestRequireRoleForbidsDisallowedRole(t *testing.T) {
 }
 
 func TestRequireRoleMissingContextForbids(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/admin", RequireRole(auth.RoleAdmin), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	r := echo.New()
+	r.GET("/admin", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, RequireRole(auth.RoleAdmin))
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)

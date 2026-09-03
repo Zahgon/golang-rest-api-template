@@ -35,7 +35,7 @@ type TokenPair struct {
 	ExpiresIn    int64
 }
 
-// UserService handles authentication use-cases without Gin.
+// UserService handles authentication use-cases without Echo.
 type UserService struct {
 	users    repository.UserPersistence
 	refresh  repository.RefreshTokenPersistence

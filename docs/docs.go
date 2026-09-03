@@ -940,7 +940,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "golang-rest-api-template",
-	Description:      "Go/Gin REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.",
+	Description:      "Go/Echo REST API template: books CRUD, register/login/refresh/logout, Redis-backed list cache and optional JWT denylist, Postgres via GORM, Mongo access logs, rate limiting, and Swagger.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

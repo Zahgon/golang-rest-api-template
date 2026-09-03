@@ -6,15 +6,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
+func newTestContext(w http.ResponseWriter) echo.Context {
+	return echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), w)
+}
+
 func TestOKStringEnvelope(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	OK(c, "ok")
+	c := newTestContext(w)
+	assert.NoError(t, OK(c, "ok"))
 	assert.Equal(t, http.StatusOK, w.Code)
 	var out struct {
 		Data string `json:"data"`
@@ -24,13 +27,12 @@ func TestOKStringEnvelope(t *testing.T) {
 }
 
 func TestCreatedStructEnvelope(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	c := newTestContext(w)
 	type item struct {
 		ID int `json:"id"`
 	}
-	Created(c, item{ID: 42})
+	assert.NoError(t, Created(c, item{ID: 42}))
 	assert.Equal(t, http.StatusCreated, w.Code)
 	var out struct {
 		Data struct {

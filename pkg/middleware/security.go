@@ -1,23 +1,32 @@
 package middleware
 
 import (
-	"github.com/gin-contrib/secure"
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
-func Security() gin.HandlerFunc {
-	return secure.New(secure.Config{
+// headerXDownloadOptions is the IE "no open" header. Echo's Secure middleware
+// has no IENoOpen option, so it is set alongside the Secure headers.
+const headerXDownloadOptions = "X-Download-Options"
+
+func Security() echo.MiddlewareFunc {
+	secure := middleware.SecureWithConfig(middleware.SecureConfig{
 		//AllowedHosts:          []string{"example.com", "ssl.example.com"},
 		//SSLRedirect:           true,
 		//SSLHost:               "ssl.example.com",
-		STSSeconds:            315360000,
-		STSIncludeSubdomains:  true,
-		FrameDeny:             true,
-		ContentTypeNosniff:    true,
-		BrowserXssFilter:      true,
+		HSTSMaxAge:            315360000,
+		HSTSExcludeSubdomains: false,
+		XFrameOptions:         "DENY",
+		ContentTypeNosniff:    "nosniff",
+		XSSProtection:         "1; mode=block",
 		ContentSecurityPolicy: "default-src 'self'",
-		IENoOpen:              true,
 		ReferrerPolicy:        "strict-origin-when-cross-origin",
-		SSLProxyHeaders:       map[string]string{"X-Forwarded-Proto": "https"},
 	})
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		secured := secure(next)
+		return func(c echo.Context) error {
+			c.Response().Header().Set(headerXDownloadOptions, "noopen")
+			return secured(c)
+		}
+	}
 }

@@ -6,12 +6,12 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
 const RequestIDHeader = "X-Request-Id"
 
-const requestIDGinKey = "request_id"
+const requestIDStoreKey = "request_id"
 
 type requestIDContextKey struct{}
 
@@ -40,34 +40,34 @@ func newRequestID() string {
 }
 
 // RequestID ensures every request has a stable request id.
-func RequestID() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		requestID := strings.TrimSpace(c.GetHeader(RequestIDHeader))
-		if requestID == "" {
-			requestID = newRequestID()
+func RequestID() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			requestID := strings.TrimSpace(c.Request().Header.Get(RequestIDHeader))
+			if requestID == "" {
+				requestID = newRequestID()
+			}
+
+			if requestID == "" {
+				requestID = "unknown"
+			}
+
+			c.Set(requestIDStoreKey, requestID)
+			c.Response().Header().Set(RequestIDHeader, requestID)
+			c.SetRequest(c.Request().WithContext(context.WithValue(c.Request().Context(), requestIDContextKey{}, requestID)))
+
+			return next(c)
 		}
-
-		if requestID == "" {
-			requestID = "unknown"
-		}
-
-		c.Set(requestIDGinKey, requestID)
-		c.Header(RequestIDHeader, requestID)
-		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), requestIDContextKey{}, requestID))
-
-		c.Next()
 	}
 }
 
-// GetRequestID returns the request id stored in gin context.
-func GetRequestID(c *gin.Context) string {
+// GetRequestID returns the request id stored in echo context.
+func GetRequestID(c echo.Context) string {
 	if c == nil {
 		return ""
 	}
-	if value, ok := c.Get(requestIDGinKey); ok {
-		if requestID, ok := value.(string); ok {
-			return requestID
-		}
+	if requestID, ok := c.Get(requestIDStoreKey).(string); ok {
+		return requestID
 	}
 	return ""
 }

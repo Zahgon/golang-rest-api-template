@@ -5,13 +5,13 @@ import (
 
 	"golang-rest-api-template/pkg/httperr"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
-// RequireRole returns Gin middleware that allows the request only when the
+// RequireRole returns Echo middleware that allows the request only when the
 // authenticated role (ContextRole, set by JWTAuth) matches one of allowed.
 // It must run after JWTAuth. Missing or disallowed roles yield 403 forbidden.
-func RequireRole(allowed ...string) gin.HandlerFunc {
+func RequireRole(allowed ...string) echo.MiddlewareFunc {
 	allowedSet := make(map[string]struct{}, len(allowed))
 	for _, r := range allowed {
 		if r == "" {
@@ -19,17 +19,13 @@ func RequireRole(allowed ...string) gin.HandlerFunc {
 		}
 		allowedSet[r] = struct{}{}
 	}
-	return func(c *gin.Context) {
-		v, ok := c.Get(ContextRole)
-		if !ok {
-			httperr.Abort(c, http.StatusForbidden, "forbidden")
-			return
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			role, _ := c.Get(ContextRole).(string)
+			if _, ok := allowedSet[role]; !ok {
+				return httperr.Abort(c, http.StatusForbidden, "forbidden")
+			}
+			return next(c)
 		}
-		role, _ := v.(string)
-		if _, ok := allowedSet[role]; !ok {
-			httperr.Abort(c, http.StatusForbidden, "forbidden")
-			return
-		}
-		c.Next()
 	}
 }

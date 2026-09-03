@@ -8,21 +8,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
 func TestMaxRequestBodyAllowsSmallPayload(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	const limit = 1024
-	r.POST("/p", MaxRequestBody(limit), func(c *gin.Context) {
-		_, err := io.ReadAll(c.Request.Body)
-		if err != nil {
-			c.Status(http.StatusInternalServerError)
-			return
+	r.POST("/p", func(c echo.Context) error {
+		if _, err := io.ReadAll(c.Request().Body); err != nil {
+			return c.NoContent(http.StatusInternalServerError)
 		}
-		c.Status(http.StatusOK)
-	})
+		return c.NoContent(http.StatusOK)
+	}, MaxRequestBody(limit))
 	req := httptest.NewRequest(http.MethodPost, "/p", strings.NewReader(`{"x":1}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -33,12 +30,11 @@ func TestMaxRequestBodyAllowsSmallPayload(t *testing.T) {
 }
 
 func TestMaxRequestBodyRejectsOversizedContentLength(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	const limit = 100
-	r.POST("/p", MaxRequestBody(limit), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	r.POST("/p", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, MaxRequestBody(limit))
 	body := bytes.Repeat([]byte("a"), limit+1)
 	req := httptest.NewRequest(http.MethodPost, "/p", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -51,17 +47,14 @@ func TestMaxRequestBodyRejectsOversizedContentLength(t *testing.T) {
 }
 
 func TestMaxRequestBodyMaxBytesReaderWithoutContentLength(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	const limit = 64
-	r.POST("/p", MaxRequestBody(limit), func(c *gin.Context) {
-		_, err := io.Copy(io.Discard, c.Request.Body)
-		if err != nil {
-			c.AbortWithStatus(http.StatusRequestEntityTooLarge)
-			return
+	r.POST("/p", func(c echo.Context) error {
+		if _, err := io.Copy(io.Discard, c.Request().Body); err != nil {
+			return c.NoContent(http.StatusRequestEntityTooLarge)
 		}
-		c.Status(http.StatusOK)
-	})
+		return c.NoContent(http.StatusOK)
+	}, MaxRequestBody(limit))
 	// ContentLength -1: reader still capped
 	req := httptest.NewRequest(http.MethodPost, "/p", bytes.NewReader(bytes.Repeat([]byte("b"), limit+10)))
 	req.Header.Set("Content-Type", "application/octet-stream")

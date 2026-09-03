@@ -15,7 +15,7 @@ type BookListQuery struct {
 	Order      string // asc or desc
 }
 
-// BookPersistence is persistence for books without HTTP or Gin.
+// BookPersistence is persistence for books without HTTP or Echo.
 type BookPersistence interface {
 	List(q BookListQuery) ([]models.Book, error)
 	Create(book *models.Book) error

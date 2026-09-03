@@ -2,7 +2,7 @@ package repository
 
 import "golang-rest-api-template/pkg/models"
 
-// UserPersistence loads and stores users without HTTP or Gin.
+// UserPersistence loads and stores users without HTTP or Echo.
 type UserPersistence interface {
 	FindByUsername(username string) (*models.User, error)
 	FindByID(id uint) (*models.User, error)

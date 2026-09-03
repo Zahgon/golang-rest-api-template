@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo/v4"
 )
 
 func init() {
@@ -25,13 +25,12 @@ func init() {
 	}
 }
 
-func testRouterJWTAuthOnly(t *testing.T) *gin.Engine {
+func testRouterJWTAuthOnly(t *testing.T) *echo.Echo {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/protected", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	r := echo.New()
+	r.GET("/protected", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(auth.NoopDenylist{}))
 	return r
 }
 
@@ -99,19 +98,17 @@ func TestJWTAuthSetsUsernameContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	var got string
-	r.GET("/p", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
-		v, ok := c.Get("username")
-		if !ok {
+	r.GET("/p", func(c echo.Context) error {
+		v := c.Get("username")
+		if v == nil {
 			t.Error("username not in context")
-			c.Status(http.StatusInternalServerError)
-			return
+			return c.NoContent(http.StatusInternalServerError)
 		}
 		got, _ = v.(string)
-		c.Status(http.StatusOK)
-	})
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(auth.NoopDenylist{}))
 	req := httptest.NewRequest(http.MethodGet, "/p", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -157,11 +154,10 @@ func TestJWTAuthRejectsDenylistedJTI(t *testing.T) {
 	if _, err := jwt.ParseWithClaims(token, claims, auth.JWTKeyFunc(auth.JWTSigningKey())); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/p", JWTAuth(mapDenylist{denied: map[string]bool{claims.ID: true}}), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	r := echo.New()
+	r.GET("/p", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(mapDenylist{denied: map[string]bool{claims.ID: true}}))
 	req := httptest.NewRequest(http.MethodGet, "/p", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -184,13 +180,12 @@ func TestJWTAuthRejectsUserRevokeBefore(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	cutoff := claims.IssuedAt.Add(time.Second)
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/p", JWTAuth(mapDenylist{
+	r := echo.New()
+	r.GET("/p", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(mapDenylist{
 		revokeBefore: map[uint]time.Time{7: cutoff},
-	}), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	}))
 	req := httptest.NewRequest(http.MethodGet, "/p", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -210,13 +205,12 @@ func TestJWTAuthAllowsTokenIssuedAfterRevokeBefore(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	cutoff := claims.IssuedAt.Add(-time.Minute)
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/p", JWTAuth(mapDenylist{
+	r := echo.New()
+	r.GET("/p", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(mapDenylist{
 		revokeBefore: map[uint]time.Time{8: cutoff},
-	}), func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	}))
 	req := httptest.NewRequest(http.MethodGet, "/p", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -232,19 +226,17 @@ func TestJWTAuthSetsUserIDContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	var got uint
-	r.GET("/p", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
-		v, ok := c.Get(ContextUserID)
-		if !ok {
+	r.GET("/p", func(c echo.Context) error {
+		v := c.Get(ContextUserID)
+		if v == nil {
 			t.Error("user id not in context")
-			c.Status(http.StatusInternalServerError)
-			return
+			return c.NoContent(http.StatusInternalServerError)
 		}
 		got, _ = v.(uint)
-		c.Status(http.StatusOK)
-	})
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(auth.NoopDenylist{}))
 	req := httptest.NewRequest(http.MethodGet, "/p", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -262,19 +254,17 @@ func TestJWTAuthSetsRoleContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	var got string
-	r.GET("/p", JWTAuth(auth.NoopDenylist{}), func(c *gin.Context) {
-		v, ok := c.Get(ContextRole)
-		if !ok {
+	r.GET("/p", func(c echo.Context) error {
+		v := c.Get(ContextRole)
+		if v == nil {
 			t.Error("role not in context")
-			c.Status(http.StatusInternalServerError)
-			return
+			return c.NoContent(http.StatusInternalServerError)
 		}
 		got, _ = v.(string)
-		c.Status(http.StatusOK)
-	})
+		return c.NoContent(http.StatusOK)
+	}, JWTAuth(auth.NoopDenylist{}))
 	req := httptest.NewRequest(http.MethodGet, "/p", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()

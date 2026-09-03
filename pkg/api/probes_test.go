@@ -6,15 +6,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func TestLivez(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
+	r := echo.New()
 	r.GET("/livez", livez)
 
 	rec := httptest.NewRecorder()

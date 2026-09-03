@@ -14,16 +14,16 @@ import (
 	"golang-rest-api-template/pkg/repository"
 	"golang-rest-api-template/pkg/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
-// UserHandler defines Gin handlers for auth routes (HTTP layer only).
+// UserHandler defines Echo handlers for auth routes (HTTP layer only).
 type UserHandler interface {
-	LoginHandler(c *gin.Context)
-	RegisterHandler(c *gin.Context)
-	RefreshHandler(c *gin.Context)
-	LogoutHandler(c *gin.Context)
-	AdminMeHandler(c *gin.Context)
+	LoginHandler(c echo.Context) error
+	RegisterHandler(c echo.Context) error
+	RefreshHandler(c echo.Context) error
+	LogoutHandler(c echo.Context) error
+	AdminMeHandler(c echo.Context) error
 }
 
 type userHandler struct {
@@ -60,25 +60,23 @@ func tokenPairBody(p service.TokenPair) models.LoginTokenBody {
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /login [post]
-func (h *userHandler) LoginHandler(c *gin.Context) {
+func (h *userHandler) LoginHandler(c echo.Context) error {
 	var incoming models.LoginUser
-	if err := c.ShouldBindJSON(&incoming); err != nil {
-		httperr.Write(c, http.StatusBadRequest, err.Error())
-		return
+	if err := bindJSON(c, &incoming); err != nil {
+		return httperr.Write(c, http.StatusBadRequest, err.Error())
 	}
-	pair, err := h.svc.Login(c.Request.Context(), incoming.Username, incoming.Password)
+	pair, err := h.svc.Login(c.Request().Context(), incoming.Username, incoming.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidLogin):
-			httperr.Write(c, http.StatusUnauthorized, "Invalid username or password")
+			return httperr.Write(c, http.StatusUnauthorized, "Invalid username or password")
 		case errors.Is(err, service.ErrLoginDB), errors.Is(err, service.ErrTokenGenerate), errors.Is(err, service.ErrRefreshPersist):
-			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
+			return httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		default:
-			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
+			return httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		}
-		return
 	}
-	httpresp.OK(c, tokenPairBody(pair))
+	return httpresp.OK(c, tokenPairBody(pair))
 }
 
 // RefreshHandler godoc
@@ -95,25 +93,23 @@ func (h *userHandler) LoginHandler(c *gin.Context) {
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /refresh [post]
-func (h *userHandler) RefreshHandler(c *gin.Context) {
+func (h *userHandler) RefreshHandler(c echo.Context) error {
 	var incoming models.RefreshRequest
-	if err := c.ShouldBindJSON(&incoming); err != nil {
-		httperr.Write(c, http.StatusBadRequest, err.Error())
-		return
+	if err := bindJSON(c, &incoming); err != nil {
+		return httperr.Write(c, http.StatusBadRequest, err.Error())
 	}
-	pair, err := h.svc.Refresh(c.Request.Context(), incoming.RefreshToken)
+	pair, err := h.svc.Refresh(c.Request().Context(), incoming.RefreshToken)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidRefresh), errors.Is(err, service.ErrRefreshReuse):
-			httperr.Write(c, http.StatusUnauthorized, "Invalid refresh token")
+			return httperr.Write(c, http.StatusUnauthorized, "Invalid refresh token")
 		case errors.Is(err, service.ErrRefreshPersist), errors.Is(err, service.ErrTokenGenerate), errors.Is(err, service.ErrLoginDB):
-			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
+			return httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		default:
-			httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
+			return httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 		}
-		return
 	}
-	httpresp.OK(c, tokenPairBody(pair))
+	return httpresp.OK(c, tokenPairBody(pair))
 }
 
 // LogoutHandler godoc
@@ -130,26 +126,22 @@ func (h *userHandler) RefreshHandler(c *gin.Context) {
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /logout [post]
-func (h *userHandler) LogoutHandler(c *gin.Context) {
+func (h *userHandler) LogoutHandler(c echo.Context) error {
 	var incoming models.LogoutRequest
-	// Empty body is allowed (logout-all). Gin returns io.EOF for empty JSON body.
-	if err := c.ShouldBindJSON(&incoming); err != nil && !errors.Is(err, io.EOF) {
-		httperr.Write(c, http.StatusBadRequest, err.Error())
-		return
+	// Empty body is allowed (logout-all). Echo's binder skips an empty body;
+	// io.EOF is still tolerated for decoders that report it.
+	if err := bindJSON(c, &incoming); err != nil && !errors.Is(err, io.EOF) {
+		return httperr.Write(c, http.StatusBadRequest, err.Error())
 	}
 
-	userID, _ := c.Get(middleware.ContextUserID)
-	uid, _ := userID.(uint)
-	jtiVal, _ := c.Get(middleware.ContextJTI)
-	jti, _ := jtiVal.(string)
-	expVal, _ := c.Get(middleware.ContextAccessExp)
-	exp, _ := expVal.(time.Time)
+	uid, _ := c.Get(middleware.ContextUserID).(uint)
+	jti, _ := c.Get(middleware.ContextJTI).(string)
+	exp, _ := c.Get(middleware.ContextAccessExp).(time.Time)
 
-	if err := h.svc.Logout(c.Request.Context(), uid, incoming.RefreshToken, jti, exp); err != nil {
-		httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
-		return
+	if err := h.svc.Logout(c.Request().Context(), uid, incoming.RefreshToken, jti, exp); err != nil {
+		return httperr.Write(c, http.StatusInternalServerError, "Internal Server Error")
 	}
-	httpresp.OK(c, models.LogoutSuccessBody{Message: "Logged out"})
+	return httpresp.OK(c, models.LogoutSuccessBody{Message: "Logged out"})
 }
 
 // RegisterHandler godoc
@@ -166,24 +158,22 @@ func (h *userHandler) LogoutHandler(c *gin.Context) {
 // @Failure 409 {string} string "Conflict"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /register [post]
-func (h *userHandler) RegisterHandler(c *gin.Context) {
+func (h *userHandler) RegisterHandler(c echo.Context) error {
 	var user models.LoginUser
-	if err := c.ShouldBindJSON(&user); err != nil {
-		httperr.Write(c, http.StatusBadRequest, err.Error())
-		return
+	if err := bindJSON(c, &user); err != nil {
+		return httperr.Write(c, http.StatusBadRequest, err.Error())
 	}
-	if err := h.svc.Register(c.Request.Context(), user.Username, user.Password); err != nil {
+	if err := h.svc.Register(c.Request().Context(), user.Username, user.Password); err != nil {
 		switch {
 		case errors.Is(err, service.ErrRegisterConflict):
-			httperr.Write(c, http.StatusConflict, "username already taken")
+			return httperr.Write(c, http.StatusConflict, "username already taken")
 		case errors.Is(err, service.ErrRegisterHash), errors.Is(err, service.ErrRegisterSave):
-			httperr.Write(c, http.StatusInternalServerError, "Could not save user")
+			return httperr.Write(c, http.StatusInternalServerError, "Could not save user")
 		default:
-			httperr.Write(c, http.StatusInternalServerError, "Could not save user")
+			return httperr.Write(c, http.StatusInternalServerError, "Could not save user")
 		}
-		return
 	}
-	httpresp.Created(c, models.RegisterSuccessBody{Message: "Registration successful"})
+	return httpresp.Created(c, models.RegisterSuccessBody{Message: "Registration successful"})
 }
 
 // AdminMeHandler godoc
@@ -198,14 +188,11 @@ func (h *userHandler) RegisterHandler(c *gin.Context) {
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 403 {string} string "Forbidden"
 // @Router /admin/me [get]
-func (h *userHandler) AdminMeHandler(c *gin.Context) {
-	username, _ := c.Get("username")
-	userID, _ := c.Get(middleware.ContextUserID)
-	role, _ := c.Get(middleware.ContextRole)
-	uid, _ := userID.(uint)
-	uname, _ := username.(string)
-	r, _ := role.(string)
-	httpresp.OK(c, models.AdminMeBody{
+func (h *userHandler) AdminMeHandler(c echo.Context) error {
+	uname, _ := c.Get("username").(string)
+	uid, _ := c.Get(middleware.ContextUserID).(uint)
+	r, _ := c.Get(middleware.ContextRole).(string)
+	return httpresp.OK(c, models.AdminMeBody{
 		Username: uname,
 		UserID:   uid,
 		Role:     r,

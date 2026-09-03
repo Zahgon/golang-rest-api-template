@@ -6,9 +6,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -29,13 +30,16 @@ type MetricsConfig struct {
 	Path string
 }
 
-// Metrics holds Prometheus collectors and Gin helpers for HTTP observability.
+// Metrics holds Prometheus collectors and Echo helpers for HTTP observability.
 type Metrics struct {
 	cfg      MetricsConfig
 	registry *prometheus.Registry
 	requests *prometheus.CounterVec
 	duration *prometheus.HistogramVec
 	inFlight prometheus.Gauge
+
+	notFoundOnce  sync.Once
+	notFoundPaths map[string]bool
 }
 
 // MetricsConfigFromEnv loads MetricsConfig from environment variables.
@@ -127,61 +131,102 @@ func MetricsFromEnv() *Metrics {
 	return NewMetrics(MetricsConfigFromEnv())
 }
 
-// Mount registers the Prometheus scrape endpoint on r when metrics are enabled.
-// Register it before r.Use middleware (same pattern as probes) so scrapes skip
-// rate limiting and auth.
-func (m *Metrics) Mount(r *gin.Engine) {
-	if m == nil || !m.cfg.Enabled || r == nil {
+// Mount registers the Prometheus scrape endpoint on e when metrics are enabled.
+// Register it on the Echo instance itself rather than the middleware-carrying
+// group (same pattern as probes) so scrapes skip rate limiting and auth.
+func (m *Metrics) Mount(e *echo.Echo) {
+	if m == nil || !m.cfg.Enabled || e == nil {
 		return
 	}
-	r.GET(m.cfg.Path, m.Handler())
+	e.GET(m.cfg.Path, m.Handler())
 }
 
 // Handler serves Prometheus metrics in the text exposition format.
-func (m *Metrics) Handler() gin.HandlerFunc {
+func (m *Metrics) Handler() echo.HandlerFunc {
 	if m == nil || !m.cfg.Enabled || m.registry == nil {
-		return func(c *gin.Context) {
-			c.Status(http.StatusNotFound)
+		return func(c echo.Context) error {
+			return c.NoContent(http.StatusNotFound)
 		}
 	}
 	h := promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
-	return func(c *gin.Context) {
-		h.ServeHTTP(c.Writer, c.Request)
+	return func(c echo.Context) error {
+		h.ServeHTTP(c.Response(), c.Request())
+		return nil
 	}
 }
 
 // Middleware records request count, latency, and in-flight gauges.
 // It skips the scrape path and Swagger UI to avoid noisy or recursive series.
-func (m *Metrics) Middleware() gin.HandlerFunc {
+func (m *Metrics) Middleware() echo.MiddlewareFunc {
 	if m == nil || !m.cfg.Enabled {
-		return func(c *gin.Context) { c.Next() }
+		return func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error { return next(c) }
+		}
 	}
-	return func(c *gin.Context) {
-		if m.shouldSkip(c) {
-			c.Next()
-			return
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if m.shouldSkip(c) {
+				return next(c)
+			}
+
+			m.inFlight.Inc()
+			defer m.inFlight.Dec()
+
+			start := time.Now()
+			err := next(c)
+			if err != nil {
+				// Commit the error response now so the recorded status is final.
+				c.Error(err)
+			}
+
+			route := m.routeLabel(c)
+			status := strconv.Itoa(c.Response().Status)
+			method := c.Request().Method
+
+			m.requests.WithLabelValues(method, route, status).Inc()
+			m.duration.WithLabelValues(method, route).Observe(time.Since(start).Seconds())
+
+			return err
 		}
-
-		m.inFlight.Inc()
-		defer m.inFlight.Dec()
-
-		start := time.Now()
-		c.Next()
-
-		route := c.FullPath()
-		if route == "" {
-			route = unmatchedRouteLabel
-		}
-		status := strconv.Itoa(c.Writer.Status())
-		method := c.Request.Method
-
-		m.requests.WithLabelValues(method, route, status).Inc()
-		m.duration.WithLabelValues(method, route).Observe(time.Since(start).Seconds())
 	}
 }
 
-func (m *Metrics) shouldSkip(c *gin.Context) bool {
-	path := c.Request.URL.Path
+// routeLabel returns the "path" label for the matched route. Echo registers
+// catch-all "route not found" entries for every group that carries middleware
+// (so that middleware still runs for unmatched paths); those report wildcard
+// patterns like /* or /api/v1/*, which are collapsed into a single unmatched
+// label rather than being reported as if they were real routes.
+func (m *Metrics) routeLabel(c echo.Context) string {
+	route := c.Path()
+	if route == "" {
+		return unmatchedRouteLabel
+	}
+	if m.notFoundRouteSet(c)[route] {
+		return unmatchedRouteLabel
+	}
+	return route
+}
+
+// notFoundRouteSet returns the paths Echo registered as route-not-found
+// handlers, resolved once from the first request (all routes are registered
+// during router construction, before the server starts serving).
+func (m *Metrics) notFoundRouteSet(c echo.Context) map[string]bool {
+	m.notFoundOnce.Do(func() {
+		paths := make(map[string]bool)
+		if e := c.Echo(); e != nil {
+			for _, r := range e.Routes() {
+				if r.Method == echo.RouteNotFound {
+					paths[r.Path] = true
+				}
+			}
+		}
+		m.notFoundPaths = paths
+	})
+	return m.notFoundPaths
+}
+
+func (m *Metrics) shouldSkip(c echo.Context) bool {
+	path := c.Request().URL.Path
 	if path == m.cfg.Path {
 		return true
 	}

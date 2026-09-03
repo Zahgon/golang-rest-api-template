@@ -10,7 +10,7 @@ import (
 
 	"golang-rest-api-template/pkg/httperr"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 )
 
 // MinAPISecretKeyBytes is the minimum accepted length for the API shared secret
@@ -84,20 +84,20 @@ func constantTimeAPIKeyEqual(provided string, secret []byte) bool {
 	return subtle.ConstantTimeCompare(left, right) == 1
 }
 
-// APIKeyAuth returns Gin middleware that validates the X-API-Key header
+// APIKeyAuth returns Echo middleware that validates the X-API-Key header
 // against the configured secret using a constant-time comparison.
-func APIKeyAuth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		secret := apiSecretCopy()
-		if len(secret) < MinAPISecretKeyBytes {
-			httperr.Abort(c, http.StatusServiceUnavailable, "API secret key not configured")
-			return
+func APIKeyAuth() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			secret := apiSecretCopy()
+			if len(secret) < MinAPISecretKeyBytes {
+				return httperr.Abort(c, http.StatusServiceUnavailable, "API secret key not configured")
+			}
+			apiKey := c.Request().Header.Get("X-API-Key")
+			if constantTimeAPIKeyEqual(apiKey, secret) {
+				return next(c)
+			}
+			return httperr.Abort(c, http.StatusUnauthorized, "Unauthorized")
 		}
-		apiKey := c.GetHeader("X-API-Key")
-		if constantTimeAPIKeyEqual(apiKey, secret) {
-			c.Next()
-			return
-		}
-		httperr.Abort(c, http.StatusUnauthorized, "Unauthorized")
 	}
 }

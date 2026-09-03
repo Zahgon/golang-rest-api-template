@@ -1,6 +1,6 @@
 package httperr
 
-import "github.com/gin-gonic/gin"
+import "github.com/labstack/echo/v4"
 
 // ErrorBody is the standard JSON error envelope for this API: {"error":"..."}.
 type ErrorBody struct {
@@ -8,19 +8,20 @@ type ErrorBody struct {
 }
 
 // Write responds with a JSON error body and the given HTTP status. The caller
-// should return immediately after (handlers do not abort the Gin chain).
-func Write(c *gin.Context, status int, message string) {
+// should return immediately after; handlers keep returning to Echo normally.
+func Write(c echo.Context, status int, message string) error {
 	if c == nil {
-		return
+		return nil
 	}
-	c.JSON(status, ErrorBody{Error: message})
+	return c.JSON(status, ErrorBody{Error: message})
 }
 
-// Abort responds with a JSON error body, sets the HTTP status, and aborts
-// the Gin chain so no later handlers run. Use in middleware.
-func Abort(c *gin.Context, status int, message string) {
+// Abort responds with a JSON error body and sets the HTTP status. Use in
+// middleware: returning without calling the next handler stops the Echo chain,
+// so no later handlers run.
+func Abort(c echo.Context, status int, message string) error {
 	if c == nil {
-		return
+		return nil
 	}
-	c.AbortWithStatusJSON(status, ErrorBody{Error: message})
+	return c.JSON(status, ErrorBody{Error: message})
 }
